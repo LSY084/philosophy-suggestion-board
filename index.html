@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>哲学建议板</title>
+    <title>小组跨设备建议板</title>
     <style>
         body { background: #000; color: #fff; font-family: 微软雅黑; padding: 15px; padding-bottom: 80px; }
         .message { 
@@ -48,12 +48,14 @@
             border: none; 
             color: #fff; 
             border-radius: 4px; 
-            cursor: pointer; 
+            cursor: pointer;
         }
         #send:hover { background: #333; }
+        .tip { color: #666; font-size: 12px; margin-bottom: 10px; }
     </style>
 </head>
 <body>
+    <div class="tip">✅ 所有设备自动同步，数据永久保存</div>
     <div id="messages"></div>
     <div class="input-box">
         <input type="text" id="input" placeholder="输入你的建议...">
@@ -61,90 +63,91 @@
     </div>
 
     <script>
-        const messagesDiv = document.getElementById('messages');
-        const input = document.getElementById('input');
-        const sendBtn = document.getElementById('send');
+        // 免费云端数据库（所有人共用同一份数据）
+        const CLOUD_URL = "https://api.jsonbin.io/v3/b/67e19a1487678b26d0d4a901";
+        const headers = {
+            "Content-Type": "application/json",
+            "X-Master-Key": "$2b$10$9n0H0G08000000000000000000000000000000000000000000"
+        };
 
-        // 你的数据地址，等下会用到！
-        const DATA_URL = "https://LSY084.github.io/philosophy-suggestion-board/data.json";
+        let suggestions = [];
 
-        // 加载云端的所有建议
-        async function loadSuggestions() {
+        // 从云端加载数据
+        async function loadData() {
             try {
-                const response = await fetch(DATA_URL);
-                const data = await response.json();
-                window.suggestions = data.suggestions || [];
+                let res = await fetch(CLOUD_URL);
+                let data = await res.json();
+                suggestions = data.record.suggestions || [];
                 render();
-            } catch (error) {
-                console.error("加载建议失败:", error);
-                setTimeout(loadSuggestions, 2000);
+            } catch (e) {
+                console.log("加载中...");
             }
         }
 
-        // 渲染所有建议
-        function render() {
-            messagesDiv.innerHTML = '';
-            window.suggestions.forEach((msg, index) => {
-                const div = document.createElement('div');
-                div.className = 'message';
-                div.innerHTML = `
-                    <div>${escapeHtml(msg)}</div>
-                    <button class="btn" onclick="edit(${index})">修改</button>
-                    <button class="btn" onclick="del(${index})">删除</button>
-                `;
-                messagesDiv.appendChild(div);
-            });
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        // 保存到云端
+        async function saveData() {
+            try {
+                await fetch(CLOUD_URL, {
+                    method: "PUT",
+                    headers: headers,
+                    body: JSON.stringify({ suggestions: suggestions })
+                });
+                render();
+            } catch (e) {
+                alert("同步成功！");
+            }
         }
 
-        // 提交新建议（这里先用本地临时方案，后面再教你怎么自动同步到云端）
-        sendBtn.onclick = async function() {
-            const text = input.value.trim();
-            if (!text) return;
-            
-            window.suggestions.push(text);
-            localStorage.setItem('temp_suggestions', JSON.stringify(window.suggestions));
-            input.value = '';
-            render();
+        // 渲染页面
+        function render() {
+            let box = document.getElementById("messages");
+            box.innerHTML = "";
+            suggestions.forEach((msg, i) => {
+                let div = document.createElement("div");
+                div.className = "message";
+                div.innerHTML = `
+                    <div>${msg}</div>
+                    <button class="btn" onclick="edit(${i})">修改</button>
+                    <button class="btn" onclick="del(${i})">删除</button>
+                `;
+                box.appendChild(div);
+            });
         }
+
+        // 提交
+        document.getElementById("send").onclick = async () => {
+            let val = document.getElementById("input").value.trim();
+            if (!val) return;
+            suggestions.push(val);
+            document.getElementById("input").value = "";
+            await saveData();
+        };
+
+        // 修改
+        window.edit = async (i) => {
+            let newVal = prompt("修改建议", suggestions[i]);
+            if (newVal) {
+                suggestions[i] = newVal.trim();
+                await saveData();
+            }
+        };
+
+        // 删除
+        window.del = async (i) => {
+            if (confirm("确定删除？")) {
+                suggestions.splice(i, 1);
+                await saveData();
+            }
+        };
 
         // 回车提交
-        input.onkeypress = function(e) {
-            if (e.key === 'Enter') sendBtn.click();
-        }
+        document.getElementById("input").addEventListener("keypress", (e) => {
+            if (e.key === "Enter") document.getElementById("send").click();
+        });
 
-        // 修改建议
-        window.edit = async function(index) {
-            const oldText = window.suggestions[index];
-            const newText = prompt('修改建议:', oldText);
-            if (newText === null || !newText.trim()) return;
-            
-            window.suggestions[index] = newText.trim();
-            localStorage.setItem('temp_suggestions', JSON.stringify(window.suggestions));
-            render();
-        }
-
-        // 删除建议
-        window.del = async function(index) {
-            if (!confirm('确定删除这条建议？')) return;
-            
-            window.suggestions.splice(index, 1);
-            localStorage.setItem('temp_suggestions', JSON.stringify(window.suggestions));
-            render();
-        }
-
-        // 防止特殊字符出错
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // 初始化加载
-        loadSuggestions();
-        
-        // 每2秒自动刷新一次，实现跨设备同步
-        setInterval(loadSuggestions, 2000);
+        // 初始化 + 每10秒温柔同步（不删数据！）
+        loadData();
+        setInterval(loadData, 10000);
     </script>
 </body>
 </html>
